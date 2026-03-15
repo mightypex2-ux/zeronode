@@ -1,0 +1,5 @@
+# Use a target directory without spaces in the path.
+# This avoids build script failures (thiserror, serde_core, etc.) when the
+# project lives under a path that contains spaces (e.g. "C:\Users\rui vit\...").
+[build]
+target-dir = "C:/cargo-builds/the-grid"
