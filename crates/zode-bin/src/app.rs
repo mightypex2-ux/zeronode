@@ -46,6 +46,9 @@ pub(crate) struct ZodeApp {
     pub detail_selection: Option<DetailSelection>,
     pub detail_closing: bool,
     detail_panel_anim: PanelAnim,
+    /// Set to true after we have automatically persisted the keypair to the vault
+    /// (so identity is kept across restarts without the user clicking "Update Vault").
+    keypair_auto_persisted: bool,
 }
 
 /// Tracks a smoothstep animation between two width values.
@@ -145,6 +148,7 @@ impl ZodeApp {
             detail_selection: None,
             detail_closing: false,
             detail_panel_anim: PanelAnim::default(),
+            keypair_auto_persisted: false,
         }
     }
 
@@ -324,6 +328,7 @@ impl ZodeApp {
     }
 
     pub(crate) fn boot_zode_with_keypair(&mut self, keypair: Option<grid_net::Keypair>) {
+        self.keypair_auto_persisted = false;
         let config = match self.settings.build_config() {
             Ok(mut c) => {
                 if let Some(kp) = keypair {
@@ -1083,6 +1088,21 @@ impl eframe::App for ZodeApp {
             .block_on(async { self.shared.lock().await.snapshot() });
 
         self.sync_visualization(&state);
+
+        // Automatically persist keypair to vault once when ZODE is running so identity
+        // is kept across restarts without the user clicking "Update Vault".
+        if matches!(self.phase, AppPhase::Revealing | AppPhase::Running)
+            && !self.keypair_auto_persisted
+            && self.zode.as_ref().is_some_and(|z| !z.keypair_protobuf().is_empty())
+            && self.active_profile_id.is_some()
+            && self.session_password.is_some()
+            && self.identity_state.machine_keys.last().is_some()
+        {
+            if let Ok(()) = crate::identity::persist_keypair_to_vault(self) {
+                self.keypair_auto_persisted = true;
+                tracing::debug!("Keypair auto-persisted to vault");
+            }
+        }
 
         self.render_title_bar(ctx, maximized, on_resize_edge);
         let peer_id = state.status.as_ref().map(|s| s.zode_id.as_str());
